@@ -5,3 +5,4 @@ xml/
 pvd/
 pvd64/
 grayscott.pyc
+*.mat

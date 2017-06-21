@@ -2,6 +2,7 @@ from dolfin import *
 import numpy as np
 from decimal import Decimal
 import sys
+from os.path import isfile
 
 parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
@@ -79,9 +80,9 @@ class InitialConditions(Expression):
         return (2,)
 
 
-def grayScottSolver(F_input, k_input, end_time = "100.0", time_step = "1.0",
+def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1.0",
                     mesh_size = 128, domain_size = 2.5, initial_condition = "spots",
-                    save_solution = False, output = None):
+                    save_solution = False, output = None, exact_solution = None):
     """Some documentation here"""
 
     # First we parse the save destination to make sure we have no error when we write to file
@@ -94,6 +95,12 @@ def grayScottSolver(F_input, k_input, end_time = "100.0", time_step = "1.0",
             print "Please provide filename"
             sys.exit()
 
+    # We also test that we have correct exact solution
+    if exact_solution != None and exact_solution.saved == False:
+        print "The exact solution provided has not been saved"
+        sys.exit()
+
+
     # Time variables
     T = Decimal(end_time)
     t = Decimal("0.0") # current time we are solving for
@@ -105,7 +112,7 @@ def grayScottSolver(F_input, k_input, end_time = "100.0", time_step = "1.0",
     mesh = RectangleMesh( Point(0, 0), Point(domain_size, domain_size),
                          mesh_size, mesh_size, "crossed" )
 
-    element = FiniteElement("CG", triangle, 1)
+    element = FiniteElement("CG", triangle, degree)
     pbd = PeriodicBoundary(domain_size)
     V = FunctionSpace(mesh, element, constrained_domain=pbd)
     W = FunctionSpace(mesh, MixedElement([element, element]), constrained_domain=pbd)
@@ -129,7 +136,7 @@ def grayScottSolver(F_input, k_input, end_time = "100.0", time_step = "1.0",
         PerturbationSquare(domain_size).mark(cf, 1)
         sigma = 0.0
 
-    w0 = interpolate(InitialConditions(cell_function = cf, sigma = sigma, degree = 1), W)
+    w0 = interpolate(InitialConditions(cell_function = cf, sigma = sigma, degree = degree), W)
     # u0, v0 = w0.split()
     # File("pvd/u0.pvd") << u0
 
@@ -139,8 +146,8 @@ def grayScottSolver(F_input, k_input, end_time = "100.0", time_step = "1.0",
 
     # The forms
 
-    F = Constant(float(F_input))
-    k = Constant(float(k_input))
+    F = Constant(F_input)
+    k = Constant(k_input)
     D_u = Constant(2e-5)
     D_v = Constant(1e-5)
 
@@ -216,19 +223,34 @@ def grayScottSolver(F_input, k_input, end_time = "100.0", time_step = "1.0",
             uu, _ = w.split()
             output << (uu, float(t))
 
-    # The last saved solution
-    u, _ = w.split(deepcopy=True) # needed for u.vector()
+    # If we have an exact solution (from a finer mesh) then we calculate the errors
+    if exact_solution != None: #exact_solution.saved has already been tested
+        # The last saved solution
+        u, _ = w.split(deepcopy=True) # deepcopy needed for u.vector()
 
-    # We load the "exact" solution (the one we got for a finer mesh)
-    mesh_exact = Mesh("xml/mesh_exact.xml")
-    W_exact = FunctionSpace(mesh_exact, MixedElement([element, element]), constrained_domain=pbd)
-    w_exact = Function(W_exact, "xml/w_exact.xml")
-    u_exact = interpolate(w_exact.sub(0), W.sub(0).collapse()) # not the same as using V!
+        mesh_exact = Mesh("xml/mesh_exact.xml")
+        W_exact = FunctionSpace(mesh_exact, MixedElement([element, element]), constrained_domain=pbd)
+        w_exact = Function(W_exact, "xml/w_exact.xml")
+        u_exact = interpolate(w_exact.sub(0), W.sub(0).collapse()) # not the same as using V!
 
-    l2_err = errornorm(u_exact, u, "l2")
-    infty_err = abs(u_exact.vector().array() - u.vector().array()).max()
+        l2_err = errornorm(u_exact, u, "l2")
+        infty_err = abs(u_exact.vector().array() - u.vector().array()).max()
 
-    return w, mesh, l2_err, infty_err # cannot save sub-function as xml file so no point returning u
+        return w, mesh, l2_err, infty_err # cannot save sub-function as xml file so no point returning u
+    else:
+        return w, mesh
+
+
+class ExactSolution():
+    def __init__(self):
+        self.saved = False
+    def save(self, F, k, degree, end_time = "100.0", time_step = "1.0", mesh_size = 128):
+        self.saved = True
+        w, mesh = grayScottSolver(F, k, degree, end_time = end_time,
+                                        time_step = time_step, mesh_size = mesh_size,
+                                        initial_condition = "square" )
+        File("xml/w_exact.xml") << w
+        File("xml/mesh_exact.xml") << mesh
 
 
 
@@ -236,9 +258,11 @@ if __name__ == "__main__":
     import sys
     end_time = sys.argv[1]
     time_step = sys.argv[2]
-    F_input = sys.argv[3] # forcing term
-    k_input = sys.argv[4] # rate constant
+    F_input = float(sys.argv[3]) # forcing term
+    k_input = float(sys.argv[4]) # rate constant
     output = sys.argv[5] # name of file to save solution
 
-    grayScottSolver( F_input, k_input, end_time=end_time, time_step=time_step,
+    degree = 1
+
+    grayScottSolver( F_input, k_input, degree, end_time=end_time, time_step=time_step,
                      save_solution = True, output = output )
