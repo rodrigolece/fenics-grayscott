@@ -1,0 +1,7 @@
+.DS_Store
+errors.mat
+old_scripts/
+xml/
+pvd/
+pvd64/
+grayscott.pyc
