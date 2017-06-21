@@ -217,20 +217,18 @@ def grayScottSolver(F_input, k_input, end_time = "100.0", time_step = "1.0",
             output << (uu, float(t))
 
     # The last saved solution
-    u, _ = w.split()
+    u, _ = w.split(deepcopy=True) # needed for u.vector()
 
     # We load the "exact" solution (the one we got for a finer mesh)
     mesh_exact = Mesh("xml/mesh_exact.xml")
     W_exact = FunctionSpace(mesh_exact, MixedElement([element, element]), constrained_domain=pbd)
     w_exact = Function(W_exact, "xml/w_exact.xml")
+    u_exact = interpolate(w_exact.sub(0), W.sub(0).collapse()) # not the same as using V!
 
-    u_exact = interpolate(w_exact.sub(0), V)
-    err = errornorm(u_exact, u, "l2")
-    # diff = Function(V)
-    # diff.vector()[:] = u.vector() - u_exact.vector()
-    # print diff.vector().norm("inf")
+    l2_err = errornorm(u_exact, u, "l2")
+    infty_err = abs(u_exact.vector().array() - u.vector().array()).max()
 
-    return w, mesh, err# cannot save sub-function as xml file no point returning u
+    return w, mesh, l2_err, infty_err # cannot save sub-function as xml file so no point returning u
 
 
 
