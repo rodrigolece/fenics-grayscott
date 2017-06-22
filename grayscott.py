@@ -2,7 +2,6 @@ from dolfin import *
 import numpy as np
 from decimal import Decimal
 import sys
-from os.path import isfile
 
 parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
@@ -155,7 +154,7 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
     u_mid = 0.5*(u + u_prevs[0])
     v_mid = 0.5*(v + v_prevs[0])
 
-    F_cn = (
+    L_cn = (
             u*r*dx - u_prevs[0]*r*dx
             - dt*(
                   - D_u * inner(grad(u_mid), grad(r))
@@ -189,14 +188,19 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
 
 
     # Compute directional derivative of w in the direction of dw (Jacobian)
-    a = derivative(L_bdf, w, TrialFunction(W))
+    a_bdf = derivative(L_bdf, w, TrialFunction(W))
+    a_cn = derivative(L_cn, w, TrialFunction(W))
 
     # Create nonlinear problem and Newton solver
-    problem = GrayScottEquations(a, L_bdf)
-    solver = NewtonSolver()
-    solver.parameters["linear_solver"] = "gmres"
-    # solver.parameters["preconditioner"] = "sor"
-    # solver.parameters["convergence_criterion"] = "residual" # "incremental"
+    problem_bdf = GrayScottEquations(a_bdf, L_bdf)
+    solver_bdf = NewtonSolver()
+    solver_bdf.parameters["linear_solver"] = "gmres"
+    # solver_bdf.parameters["preconditioner"] = "sor"
+    # solver_bdf.parameters["convergence_criterion"] = "residual" # "incremental"
+
+    problem_cn = GrayScottEquations(a_cn, L_cn)
+    solver_cn = NewtonSolver()
+    solver_cn.parameters["linear_solver"] = "gmres"
 
     if save_solution:
         output = File("pvd/" + output)
@@ -209,9 +213,9 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
 
         # Check if we have enough initial data for BDF2, otherwise use Crank-Nicolson
         if ntimestep < 1:
-            solve(F_cn == 0, w)
+            solver_cn.solve(problem_cn, w.vector())
         else:
-            solver.solve(problem, w.vector())
+            solver_bdf.solve(problem_bdf, w.vector())
 
         # Cycle the variables
         assign(w2, [w1.sub(0), w1.sub(1)])
@@ -265,4 +269,4 @@ if __name__ == "__main__":
     degree = 1
 
     grayScottSolver( F_input, k_input, degree, end_time=end_time, time_step=time_step,
-                     save_solution = True, output = output )
+                     save_solution = True, output = output, mesh_size = 128)
