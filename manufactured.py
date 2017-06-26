@@ -89,7 +89,7 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
     dv = v_exact.diff(tt) - ( D_v * v_exact.diff(x,2) + u_exact*v_exact**2 - (F+k)*v_exact )
 
     # Initial conditions
-    expression_w_exact = Expression([ccode(u_exact), ccode(v_exact)], tt = float(t), degree=degree) #element = W.ufl_element())
+    expression_w_exact = Expression([ccode(u_exact), ccode(v_exact)], tt = float(t), degree=degree+1) #element = W.ufl_element())
     w_exact = interpolate(expression_w_exact, W)
     u_exact, v_exact = split(w_exact)
     # print expression_w_exact.cppcode
@@ -106,8 +106,8 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
     # D_u = Constant(2e-5)
     # D_v = Constant(1e-5)
 
-    rhs_u = Expression(ccode(du), tt = float(t), degree = degree)
-    rhs_v = Expression(ccode(dv), tt = float(t), degree = degree)
+    rhs_u = Expression(ccode(du), tt = float(t), degree = degree+1)
+    rhs_v = Expression(ccode(dv), tt = float(t), degree = degree+1)
     # expression_rhs = Expression([du, dv], t=float(t), D_u=D_u, D_v=D_v, F=F, k=k, element=W.ufl_element())
 
 
@@ -134,33 +134,33 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
             )
 
 
-    # L_bdf = (
-    #          u*r*dx - 4.0/3 * u_prevs[0]*r*dx + 1.0/3 * u_prevs[1]*r*dx
-    #          - 2.0/3*dt*(
-    #                      - D_u * inner(grad(u), grad(r))
-    #                      - inner(u, v**2) * r
-    #                      + F * (1 - u) * r
-    #                      )*dx
-    #         - dt*rhs_u*r*dx
-    #
-    #          + v*s*dx - 4.0/3 * v_prevs[0]*s*dx + 1.0/3 * v_prevs[1]*s*dx
-    #          - 2.0/3*dt*(
-    #                      - D_v * inner(grad(v), grad(s))
-    #                      + inner(u, v**2) * s
-    #                      - (F + k)*v  * s
-    #                      )*dx
-    #         - dt*rhs_v*s*dx
-    #         )
+    L_bdf = (
+             u*r*dx - 4.0/3 * u_prevs[0]*r*dx + 1.0/3 * u_prevs[1]*r*dx
+             - 2.0/3*dt*(
+                         - D_u * inner(grad(u), grad(r))
+                         - u * v**2 * r
+                         + F * (1 - u) * r
+                         )*dx
+            - 2.0/3*dt*rhs_u*r*dx
+
+             + v*s*dx - 4.0/3 * v_prevs[0]*s*dx + 1.0/3 * v_prevs[1]*s*dx
+             - 2.0/3*dt*(
+                         - D_v * inner(grad(v), grad(s))
+                         + u * v**2 * s
+                         - (F + k)*v  * s
+                         )*dx
+            - 2.0/3*dt*rhs_v*s*dx
+            )
 
 
     # Compute directional derivative of w in the direction of dw (Jacobian)
-    # a_bdf = derivative(L_bdf, w, TrialFunction(W))
+    a_bdf = derivative(L_bdf, w, TrialFunction(W))
     a_cn = derivative(L_cn, w, TrialFunction(W))
 
     # Create nonlinear problem and Newton solver
-    # problem_bdf = GrayScottEquations(a_bdf, L_bdf)
-    # solver_bdf = NewtonSolver()
-    # solver_bdf.parameters["linear_solver"] = "gmres"
+    problem_bdf = GrayScottEquations(a_bdf, L_bdf)
+    solver_bdf = NewtonSolver()
+    solver_bdf.parameters["linear_solver"] = "gmres"
 
     problem_cn = GrayScottEquations(a_cn, L_cn)
     solver_cn = NewtonSolver()
@@ -169,7 +169,7 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
     if save_solution:
         output = File("pvd/" + output)
         uu, vv = w.split()
-        output << (vv, float(t))
+        output << (uu, float(t))
 
     while t < T:
 
@@ -177,25 +177,25 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
         t += h; print "Solving for time: ", float(t)
 
         # Check if we have enough initial data for BDF2, otherwise use Crank-Nicolson
-        # if ntimestep < 1:
-        print "Crank-Nicolson time is: ", float(t - h/2)
-        rhs_u.tt = float(t - h/2)
-        rhs_v.tt = float(t - h/2)
-        solver_cn.solve(problem_cn, w.vector())
-        # else:
-        #     rhs_u.tt = float(t)
-        #     rhs_v.tt = float(t)
-        #     solver_bdf.solve(problem_bdf, w.vector())
+        if ntimestep < 1:
+            print "Crank-Nicolson time is: ", float(t - h/2)
+            rhs_u.tt = float(t - h/2)
+            rhs_v.tt = float(t - h/2)
+            solver_cn.solve(problem_cn, w.vector())
+        else:
+            rhs_u.tt = float(t)
+            rhs_v.tt = float(t)
+            solver_bdf.solve(problem_bdf, w.vector())
 
         # Cycle the variables
-        # w2.assign(w1)
+        w2.assign(w1)
         w1.assign(w)
 
         ntimestep += 1
 
-        if save_solution and ntimestep % 10 == 0:
+        if save_solution:# and ntimestep % 10 == 0:
             uu, vv = w.split()
-            output << (vv, float(t))
+            output << (uu, float(t))
 
 
     # The last saved solution
@@ -224,5 +224,5 @@ if __name__ == "__main__":
     degree = 1
 
     l2_err, infty_err = grayScottSolver( F_input, k_input, degree, end_time=end_time, time_step=time_step,
-                     save_solution = True, output = output, mesh_size = 16, domain_size = 1.0)
+                     save_solution = True, output = output, mesh_size = 32, domain_size = 1.0)
     print l2_err, infty_err
