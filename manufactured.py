@@ -3,6 +3,7 @@ from decimal import Decimal
 import sys
 import sympy as smp
 from sympy.printing import ccode
+# from scipy.io import savemat
 
 parameters["form_compiler"]["optimize"]     = True
 parameters["form_compiler"]["cpp_optimize"] = True
@@ -167,9 +168,9 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
     solver_cn.parameters["linear_solver"] = "gmres"
 
     if save_solution:
-        output = File("pvd/" + output)
+        out = File(output)
         uu, vv = w.split()
-        output << (uu, float(t))
+        out << (uu, float(t))
 
     while t < T:
 
@@ -193,9 +194,9 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
 
         ntimestep += 1
 
-        if save_solution:# and ntimestep % 10 == 0:
+        if save_solution and ntimestep % 10 == 0:
             uu, vv = w.split()
-            output << (uu, float(t))
+            out << (uu, float(t))
 
 
     # The last saved solution
@@ -208,6 +209,8 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
     l2_err = errornorm(u_exact, u, "l2")
     infty_err = abs(u_exact.vector().array() - u.vector().array()).max()
 
+    # u_array = u.vector().array()
+    # savemat(output[:-4] + ".mat", mdict = {"u": u_array, "T": float(T)} )
     return l2_err, infty_err
 
 
@@ -224,5 +227,5 @@ if __name__ == "__main__":
     degree = 1
 
     l2_err, infty_err = grayScottSolver( F_input, k_input, degree, end_time=end_time, time_step=time_step,
-                     save_solution = True, output = output, mesh_size = 32, domain_size = 1.0)
+                     save_solution = True, output = output, mesh_size = 128, domain_size = 1.0)
     print l2_err, infty_err

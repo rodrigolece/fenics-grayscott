@@ -68,7 +68,7 @@ class InitialConditions(Expression):
         # np.random.seed(0) # TODO this doesn't work
 
     def eval_cell(self, values, x, ufc_cell):
-        if self.cell_function.array()[ufc_cell.index] == 1:  # inside PerturbationSpots
+        if self.cell_function.array()[ufc_cell.index] == 1:  # inside perturbation domain
             values[0] = 0.5 + self.sigma * np.random.randn()
             values[1] = 0.25 + self.sigma * np.random.randn()
         else:
@@ -113,7 +113,7 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
 
     element = FiniteElement("CG", triangle, degree)
     pbd = PeriodicBoundary(domain_size)
-    V = FunctionSpace(mesh, element, constrained_domain=pbd)
+    # V = FunctionSpace(mesh, element, constrained_domain=pbd) # not used because != W.sub(0)
     W = FunctionSpace(mesh, MixedElement([element, element]), constrained_domain=pbd)
 
     w = Function(W); (u, v) = split(w)
@@ -259,7 +259,7 @@ class ExactSolution():
 
 
 if __name__ == "__main__":
-    import sys
+    
     end_time = sys.argv[1]
     time_step = sys.argv[2]
     F_input = float(sys.argv[3]) # forcing term
