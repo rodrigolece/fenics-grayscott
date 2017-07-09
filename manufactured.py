@@ -37,7 +37,10 @@ class PeriodicBoundary(SubDomain):
 
 def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1.0",
                     mesh_size = 128, domain_size = 2.5, save_solution = False, output = None):
-    """Some documentation here"""
+    """
+    The main function to solve the Gray-Scott Equations with manufactured solutions
+    and a sosurce term, in 1D.
+    """
 
     # First we parse the save destination to make sure we have no error when we write to file
     if save_solution:
@@ -107,31 +110,41 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
     # D_u = Constant(2e-5)
     # D_v = Constant(1e-5)
 
+    # Expressions for the new time step
     rhs_u = Expression(ccode(du), tt = float(t), degree = degree+1)
     rhs_v = Expression(ccode(dv), tt = float(t), degree = degree+1)
+    # Expressions for the old time step
+    rhs_u1 = Expression(ccode(du), tt = float(t), degree = degree+1)
+    rhs_v1 = Expression(ccode(dv), tt = float(t), degree = degree+1)
     # expression_rhs = Expression([du, dv], t=float(t), D_u=D_u, D_v=D_v, F=F, k=k, element=W.ufl_element())
 
 
-    # Midpoints used in Crank-Nicolson
-    u_mid = 0.5*(u + u_prevs[0])
-    v_mid = 0.5*(v + v_prevs[0])
-
     L_cn = (
             u*r*dx - u_prevs[0]*r*dx
-            - dt*(
-                  - D_u * inner(grad(u_mid), grad(r))
-                  - u_mid * v_mid**2 * r
-                  + F * (1 - u_mid) * r
+            - 0.5*dt*(
+                  - D_u * inner(grad(u), grad(r))
+                  - u * v**2 * r
+                  + F * (1 - u) * r
                   )*dx
-            - dt*rhs_u*r*dx
+            - 0.5*dt*(
+                  - D_u * inner(grad(u_prevs[0]), grad(r))
+                  - u_prevs[0] * v_prevs[0]**2 * r
+                  + F * (1 - u_prevs[0]) * r
+                  )*dx
+            - 0.5*dt*(rhs_u + rhs_u1)*r*dx
 
             + v*s*dx - v_prevs[0]*s*dx
-            - dt*(
-                  - D_v * inner(grad(v_mid), grad(s))
-                  + u_mid * v_mid**2 * s
-                  - (F + k) * v_mid * s
+            - 0.5*dt*(
+                  - D_v * inner(grad(v), grad(s))
+                  + u * v**2 * s
+                  - (F + k) * v * s
                   )*dx
-            - dt*rhs_v*s*dx
+            - 0.5*dt*(
+                  - D_v * inner(grad(v_prevs[0]), grad(s))
+                  + u_prevs[0] * v_prevs[0]**2 * s
+                  - (F + k) * v_prevs[0] * s
+                  )*dx
+            - 0.5*dt*(rhs_v + rhs_v1)*s*dx
             )
 
 
@@ -175,17 +188,16 @@ def grayScottSolver(F_input, k_input, degree, end_time = "100.0", time_step = "1
     while t < T:
 
         # Update the time we're solving for
+        rhs_u1.tt = float(t)
+        rhs_v1.tt = float(t)
         t += h; print "Solving for time: ", float(t)
+        rhs_u.tt = float(t)
+        rhs_v.tt = float(t)
 
         # Check if we have enough initial data for BDF2, otherwise use Crank-Nicolson
         if ntimestep < 1:
-            print "Crank-Nicolson time is: ", float(t - h/2)
-            rhs_u.tt = float(t - h/2)
-            rhs_v.tt = float(t - h/2)
             solver_cn.solve(problem_cn, w.vector())
         else:
-            rhs_u.tt = float(t)
-            rhs_v.tt = float(t)
             solver_bdf.solve(problem_bdf, w.vector())
 
         # Cycle the variables
